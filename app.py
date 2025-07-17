@@ -599,7 +599,7 @@ def heatmap_3d_interface():
         hauteur_totale = nb_etages * hauteur_etage
         
         # Option pour multiple émetteurs 3D
-        nb_emetteurs_3d = st.number_input("Nombre de points d'accès 3D", min_value=1, max_value=4, value=1, key="nb_emetteurs_3d")
+        nb_emetteurs_3d = st.number_input("Nombre de points d'accès", min_value=1, max_value=4, value=1, key="nb_emetteurs_3d")
         
         emetteurs_3d = []
         for i in range(nb_emetteurs_3d):
@@ -617,7 +617,7 @@ def heatmap_3d_interface():
             with col2:
                 puissance_tx = st.number_input(f"Puissance TX (dBm)", value=20.0, step=1.0, key=f"power_3d_{i}")
                 gain_antenne = st.number_input(f"Gain antenne (dBi)", value=2.0, step=0.5, key=f"gain_3d_{i}")
-                directivite = st.selectbox(f"Directivité", ["Omnidirectionnel", "Directif"], key=f"dir_3d_{i}")
+                #directivite = st.selectbox(f"Directivité", ["Omnidirectionnel", "Directif"], key=f"dir_3d_{i}")
             
             with col3:
                 # Calcul des coordonnées pixel et étage
@@ -627,7 +627,7 @@ def heatmap_3d_interface():
                 
                 st.write(f"Étage: {etage}")
                 st.write(f"Puissance totale: {puissance_tx + gain_antenne:.1f} dBm")
-                st.write(f"Type: {directivite}")
+                #st.write(f"Type: {directivite}")
             
             emetteurs_3d.append({
                 'position_meter': (x_meter, y_meter, z_meter),
@@ -635,7 +635,7 @@ def heatmap_3d_interface():
                 'puissance_tx': puissance_tx,
                 'gain_antenne': gain_antenne,
                 'puissance_totale': puissance_tx + gain_antenne,
-                'directivite': directivite,
+                #'directivite': directivite,
                 'etage': etage
             })
         
@@ -756,6 +756,238 @@ def heatmap_3d_interface():
                     st.error(f"Erreur lors de la génération 3D: {e}")
                     st.exception(e)
 
+def optimization_2d_interface():
+    """Interface pour l'optimisation automatique des points d'accès 2D"""
+    st.header("Optimisation des Points d'Accès 2D")
+    
+    # Upload du fichier pour optimisation 2D
+    uploaded_file_optimization_2d = st.file_uploader(
+        "Téléchargez le plan de l'appartement (PNG) pour l'optimisation 2D",
+        type=['png'],
+        help="Le plan doit être en blanc avec les murs en noir",
+        key="upload_optimization_2d"
+    )
+    
+    if uploaded_file_optimization_2d is not None:
+        # Sidebar pour les paramètres d'optimisation 2D
+        st.sidebar.header("Paramètres d'Optimisation 2D")
+        # Conversion de l'image uploadée
+        image = Image.open(uploaded_file_optimization_2d)
+        image_array = np.array(image)
+        
+        # Affichage de l'image originale
+        st.subheader("Plan 2D pour optimisation")
+        st.image(image, caption="Plan pour optimisation des points d'accès 2D", use_column_width=True)
+        
+        # Paramètres du bâtiment 2D
+        st.sidebar.subheader("Dimensions du plan")
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            longueur = st.number_input("Longueur (m)", min_value=1.0, value=10.0, step=0.1, key="longueur_opt_2d")
+        
+        with col2:
+            largeur = st.number_input("Largeur (m)", min_value=1.0, value=8.0, step=0.1, key="largeur_opt_2d")
+        
+        # Paramètres RF 2D
+        frequency_opt_2d = st.sidebar.selectbox("Fréquence", [2400, 5000], index=0, key="freq_opt_2d")
+        
+        # Objectifs de couverture 2D
+        st.sidebar.subheader("Objectifs de Couverture 2D")
+        target_coverage_db_2d = st.sidebar.number_input("Signal minimal (dB)", value=-50.0, step=1.0, key="target_signal_2d")
+        min_coverage_percent_2d = st.sidebar.number_input("Couverture minimale (%)", min_value=50.0, max_value=100.0, value=85.0, step=1.0, key="min_coverage_2d")
+        power_tx_2d = st.sidebar.number_input("Puissance émetteur (dBm)", value=20.0, step=1.0, key="power_opt_2d")
+        
+        # Paramètres d'optimisation 2D
+        st.sidebar.subheader("Paramètres d'Optimisation")
+        max_access_points_2d = st.sidebar.number_input("Nb max de points d'accès", min_value=1, max_value=8, value=6, step=1, key="max_ap_2d")
+
+        # Choix de l'algorithme
+        algorithm_choice = st.sidebar.selectbox(
+            "Algorithme d'optimisation",
+            ["K-means", "GMM + EM", "Greedy", "Comparaison des trois"],
+            index=0,
+            help="K-means: Rapide, clusters sphériques\nGMM: Plus précis, clusters ellipsoïdaux\nGreedy: Placement séquentiel optimisé\nComparaison: Teste les trois et recommande le meilleur",
+            key="algorithm_choice_2d"
+        )
+        
+        if algorithm_choice == "K-means":
+            st.sidebar.info("🔧 Optimisation par clustering K-means")
+        elif algorithm_choice == "GMM + EM":
+            st.sidebar.info("🧠 Optimisation par Gaussian Mixture Model + EM")
+        elif algorithm_choice == "Greedy":
+            st.sidebar.info("🎯 Optimisation par placement séquentiel Greedy")
+        else:
+            st.sidebar.info("🔬 Comparaison et recommandation automatique")
+        
+        # Résolution pour le calcul 2D
+        st.sidebar.subheader("Résolution de Calcul")
+        resolution_2d = st.sidebar.slider("Résolution grille", min_value=15, max_value=40, value=25, key="res_2d")
+        
+        # Traitement de l'image
+        try:
+            from image_processor import ImageProcessor
+            processor = ImageProcessor()
+            processed_image, walls_detected = processor.process_image(image_array)
+            
+            # Affichage de l'image traitée
+            st.subheader("Murs détectés")
+            st.image(processed_image, caption="Murs extraits pour l'optimisation 2D", use_column_width=True)
+            
+            # Bouton d'optimisation 2D
+            if st.button("🚀 Lancer l'Optimisation 2D", key="optimize_button_2d"):
+                
+                try:
+                    from access_point_optimizer_2d_fixed import AccessPointOptimizer2D
+                    
+                    # Initialisation de l'optimiseur 2D
+                    optimizer_2d = AccessPointOptimizer2D(frequency_opt_2d)
+                    
+                    # Génération des points à couvrir 2D
+                    with st.spinner("Génération de la grille de couverture 2D..."):
+                        coverage_points, grid_info = optimizer_2d.generate_coverage_grid_2d(
+                            walls_detected, longueur, largeur, resolution_2d
+                        )
+                    
+                    st.success(f"Grille générée: {len(coverage_points)} points à couvrir en 2D")
+                    
+                    # Gestion des différents algorithmes
+                    if algorithm_choice == "Comparaison des trois":
+                        # Comparaison K-means vs GMM vs Greedy
+                        with st.spinner("Comparaison K-means vs GMM vs Greedy..."):
+                            comparison_results = optimizer_2d.compare_algorithms_2d(
+                                coverage_points, grid_info, longueur, largeur,
+                                target_coverage_db_2d, min_coverage_percent_2d, power_tx_2d, max_access_points_2d
+                            )
+                        
+                        # Affichage des résultats de comparaison
+                        st.subheader("🔬 Comparaison des Algorithmes")
+                        
+                        if comparison_results['recommended']:
+                            algo_names = {'kmeans': 'K-means', 'gmm': 'GMM + EM', 'greedy': 'Greedy'}
+                            recommended_name = algo_names[comparison_results['recommended']]
+                            improvement = comparison_results.get('improvement', 0)
+                            
+                            st.success(f"🏆 Algorithme recommandé: **{recommended_name}**")
+                            st.info(f"📈 Amélioration du score: +{improvement:.3f}")
+                        
+                        # Visualisation comparative
+                        fig_comparison = optimizer_2d.visualize_algorithm_comparison_2d(
+                            comparison_results, coverage_points, grid_info, longueur, largeur, image_array
+                        )
+                        st.pyplot(fig_comparison)
+                        
+                        # Utiliser le meilleur algorithme pour la suite
+                        if comparison_results['recommended'] == 'gmm':
+                            best_config_2d = comparison_results['gmm']['config']
+                            cluster_analysis_2d = comparison_results['gmm']['analysis']
+                        elif comparison_results['recommended'] == 'greedy':
+                            best_config_2d = comparison_results['greedy']['config']
+                            cluster_analysis_2d = comparison_results['greedy']['analysis']
+                        else:
+                            best_config_2d = comparison_results['kmeans']['config']
+                            cluster_analysis_2d = comparison_results['kmeans']['analysis']
+                    
+                    else:
+                        # Algorithme unique
+                        if algorithm_choice == "GMM + EM":
+                            algorithm_key = 'gmm'
+                            algorithm_name = "GMM + EM"
+                        elif algorithm_choice == "Greedy":
+                            algorithm_key = 'greedy'
+                            algorithm_name = "Greedy"
+                        else:
+                            algorithm_key = 'kmeans'
+                            algorithm_name = "K-means"
+                        
+                        with st.spinner(f"Optimisation par {algorithm_name}..."):
+                            best_config_2d, cluster_analysis_2d = optimizer_2d.optimize_with_algorithm_choice_2d(
+                                coverage_points, grid_info, longueur, largeur,
+                                target_coverage_db_2d, min_coverage_percent_2d, power_tx_2d, max_access_points_2d,
+                                algorithm=algorithm_key
+                            )
+                        
+                        st.success(f"Optimisation {algorithm_name} terminée: {best_config_2d['stats']['coverage_percent']:.1f}% de couverture avec {len(best_config_2d['access_points'])} points d'accès")
+                    
+                    # Affichage des résultats 2D
+                    if best_config_2d and algorithm_choice != "Comparaison des trois":
+                        # Visualisation 2D
+                        st.subheader("Résultat de l'Optimisation 2D")
+                        fig_opt_2d = optimizer_2d.visualize_optimization_result_2d(
+                            best_config_2d, coverage_points, grid_info, 
+                            longueur, largeur, image_array
+                        )
+                        st.pyplot(fig_opt_2d)
+                        
+                        # Export de la visualisation
+                        import io
+                        buffer = io.BytesIO()
+                        fig_opt_2d.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
+                        buffer.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Télécharger Visualisation PNG",
+                            data=buffer.getvalue(),
+                            file_name=f"optimisation_2d_{frequency_opt_2d}MHz.png",
+                            mime="image/png"
+                        )
+
+                        # Statistiques détaillées 2D
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("Nbr de Points d'Accès", len(best_config_2d['access_points']))
+                            st.metric("Couverture", f"{best_config_2d['stats']['coverage_percent']:.1f}%")
+                        
+                        with col2:
+                            st.metric("Points Couverts", f"{best_config_2d['stats']['covered_points']}/{best_config_2d['stats']['total_points']}")
+                            st.metric("Score d'Optimisation", f"{best_config_2d['score']:.3f}")
+                        
+                        with col3:
+                            if 'signal_levels' in best_config_2d['stats']:
+                                avg_signal = np.mean(best_config_2d['stats']['signal_levels'])
+                                st.metric("Signal Moyen", f"{avg_signal:.1f} dB")
+                                min_signal = np.min(best_config_2d['stats']['signal_levels'])
+                                st.metric("Signal Minimal", f"{min_signal:.1f} dB")
+
+                        # Informations sur l'algorithme utilisé
+                        if 'algorithm_used' in best_config_2d:
+                            algorithm_used = best_config_2d['algorithm_used']
+                            st.info(f"🧠 **Algorithme utilisé:** {algorithm_used}")
+                               
+                        else:
+                            algorithm_display = "GMM + EM" if algorithm_choice == "GMM + EM" else "K-means"
+                            st.info(f"🧠 **Algorithme utilisé:** {algorithm_display}")
+                        
+                        # Configuration des points d'accès 2D
+                        st.subheader("Configuration des Points d'Accès Optimisés")
+                        
+                        ap_data_2d = []
+                        for i, ap in enumerate(best_config_2d['access_points']):
+                            x, y, power = ap
+                            ap_data_2d.append({
+                                "Point d'Accès": f"AP{i+1}",
+                                "Position X (m)": round(x, 2),
+                                "Position Y (m)": round(y, 2),
+                                "Puissance (dBm)": round(power, 1)
+                            })
+                        
+                        df_ap_2d = pd.DataFrame(ap_data_2d)
+                        st.dataframe(df_ap_2d, use_container_width=True)
+
+                except ImportError as e:
+                    st.error(f"Module d'optimisation 2D non disponible: {e}")
+                    st.info("Vérifiez que tous les modules sont installés correctement.")
+                except Exception as e:
+                    st.error(f"Erreur lors de l'optimisation 2D: {e}")
+                    st.exception(e)
+        
+        except ImportError as e:
+            st.error(f"Module de traitement d'image non disponible: {e}")
+        except Exception as e:
+            st.error(f"Erreur lors du traitement: {e}")
+            st.exception(e)
+
+
 def optimization_3d_interface():
     """Interface pour l'optimisation automatique des points d'accès 3D"""
     st.header("Optimisation des Points d'Accès 3D")
@@ -770,7 +1002,7 @@ def optimization_3d_interface():
     
     if uploaded_file_optimization is not None:
         # Sidebar pour les paramètres d'optimisation
-        st.sidebar.header("Paramètres d'Optimisation")
+        st.sidebar.header("Paramètres d'Optimisation 3D")
         # Conversion de l'image uploadée
         image = Image.open(uploaded_file_optimization)
         image_array = np.array(image)
@@ -790,22 +1022,43 @@ def optimization_3d_interface():
             hauteur_totale = st.number_input("Hauteur totale (m)", min_value=2.0, value=5.4, step=0.1, key="hauteur_opt")
             nb_etages = st.number_input("Nombre d'étages", min_value=1, value=2, step=1, key="etages_opt")
         
-        # Paramètres RF
-        st.sidebar.subheader("Paramètres RF")
         frequency_opt = st.sidebar.selectbox("Fréquence", [2400, 5000], index=0, key="freq_opt")
         
         # Objectifs de couverture
         st.sidebar.subheader("Objectifs de Couverture")
-        target_coverage_db = st.sidebar.number_input("Signal minimal (dB)", value=-70.0, step=1.0, key="target_signal")
+        target_coverage_db = st.sidebar.number_input("Signal minimal (dB)", value=-50.0, step=1.0, key="target_signal")
         min_coverage_percent = st.sidebar.number_input("Couverture minimale (%)", min_value=50.0, max_value=100.0, value=90.0, step=1.0, key="min_coverage")
         power_tx = st.sidebar.number_input("Puissance émetteur (dBm)", value=20.0, step=1.0, key="power_opt")
         
         # Paramètres d'optimisation
         st.sidebar.subheader("Paramètres d'Optimisation")
         max_access_points = st.sidebar.number_input("Nb max de points d'accès", min_value=1, max_value=12, value=8, step=1, key="max_ap")
-        st.sidebar.info("🔧 Optimisation par clustering K-means uniquement")
-
+        # Choix de l'algorithme d'optimisation
+        algorithm_choice = st.sidebar.selectbox(
+            "Algorithme d'optimisation",
+            ["genetic", "kmeans", "gmm", "greedy"],
+            index=1,  # K-means par défaut
+            help="Choisissez l'algorithme d'optimisation pour le placement des points d'accès",
+            key="algorithm_choice"
+        )
         
+        # Informations sur les algorithmes
+        algorithm_info = {
+            "genetic": "🧬 Algorithme génétique - Optimisation globale par évolution",
+            "kmeans": "📊 K-means clustering - Regroupement par proximité",
+            "gmm": "🧠 Gaussian Mixture Model - Modélisation probabiliste avancée",
+            "greedy": "🎯 Greedy (Glouton) - Placement séquentiel optimal"
+        }
+        st.sidebar.info(algorithm_info[algorithm_choice])
+        
+        # Option de comparaison
+        compare_algorithms = st.sidebar.checkbox(
+            "Comparer tous les algorithmes",
+            value=False,
+            help="Compare tous les algorithmes disponibles (plus lent)",
+            key="compare_algos"
+        )
+
         # Résolution pour le calcul
         st.sidebar.subheader("Résolution de Calcul")
         resolution_xy_opt = st.sidebar.slider("Résolution XY", min_value=10, max_value=30, value=20, key="res_xy_opt")
@@ -839,14 +1092,114 @@ def optimization_3d_interface():
                     
                     st.success(f"Zones générées: {len(coverage_points)} points à couvrir")
                     
-                    # Optimisation par clustering K-means
-                    with st.spinner("Optimisation par clustering K-means..."):
-                        best_config, cluster_analysis = optimizer.optimize_with_clustering(
-                            coverage_points, grid_info, longueur, largeur, hauteur_totale,
-                            target_coverage_db, min_coverage_percent, power_tx
-                        )
+                    # Choix du mode d'optimisation
+                    if compare_algorithms:
+                        # Mode comparaison de tous les algorithmes
+                        with st.spinner("Comparaison de tous les algorithmes d'optimisation..."):
+                            comparison_results = optimizer.compare_algorithms_3d(
+                                coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                                target_coverage_db, min_coverage_percent, max_access_points, power_tx
+                            )
+                        
+                        # Affichage des résultats de comparaison
+                        st.success("Comparaison terminée!")
+                        
+                        # Tableau comparatif
+                        st.subheader("🏆 Comparaison des Algorithmes")
+                        
+                        comparison_data = []
+                        for algo, result in comparison_results['algorithms'].items():
+                            if result['success'] and result['config']:
+                                stats = result['config']['stats']
+                                comparison_data.append({
+                                    "Algorithme": algo.upper(),
+                                    "Couverture (%)": f"{stats['coverage_percent']:.1f}",
+                                    "Points d'Accès": stats['num_access_points'],
+                                    "Score": f"{result['config']['score']:.3f}",
+                                    "Succès": "✅"
+                                })
+                            else:
+                                comparison_data.append({
+                                    "Algorithme": algo.upper(),
+                                    "Couverture (%)": "0.0",
+                                    "Points d'Accès": 0,
+                                    "Score": "0.000",
+                                    "Succès": "❌"
+                                })
+                        
+                        df_comparison = pd.DataFrame(comparison_data)
+                        st.dataframe(df_comparison, use_container_width=True)
+                        
+                        # Graphique de comparaison
+                        successful_results = [result for result in comparison_results['algorithms'].values() 
+                                            if result['success'] and result['config']]
+                        
+                        if successful_results:
+                            fig_comparison = go.Figure()
+                            
+                            algorithms = [result['algorithm_name'] for result in successful_results]
+                            coverages = [result['config']['stats']['coverage_percent'] for result in successful_results]
+                            num_aps = [result['config']['stats']['num_access_points'] for result in successful_results]
+                            
+                            # Graphique en barres pour couverture
+                            fig_comparison.add_trace(go.Bar(
+                                name='Couverture (%)',
+                                x=algorithms,
+                                y=coverages,
+                                yaxis='y',
+                                marker_color='lightblue'
+                            ))
+                            
+                            # Graphique en barres pour nombre d'APs
+                            fig_comparison.add_trace(go.Bar(
+                                name='Nombre d\'APs',
+                                x=algorithms,
+                                y=num_aps,
+                                yaxis='y2',
+                                marker_color='lightcoral'
+                            ))
+                            
+                            fig_comparison.update_layout(
+                                title='Comparaison des Performances des Algorithmes',
+                                xaxis_title='Algorithme',
+                                yaxis=dict(
+                                    title='Couverture (%)',
+                                    side='left'
+                                ),
+                                yaxis2=dict(
+                                    title='Nombre de Points d\'Accès',
+                                    side='right',
+                                    overlaying='y'
+                                ),
+                                barmode='group'
+                            )
+                            
+                            st.plotly_chart(fig_comparison, use_container_width=True)
+                        
+                        # Sélection du meilleur algorithme pour affichage détaillé
+                        if comparison_results['best_algorithm']:
+                            best_config = comparison_results['algorithms'][comparison_results['best_algorithm']]['config']
+                            cluster_analysis = comparison_results['algorithms'][comparison_results['best_algorithm']]['analysis']
+                            
+                            st.success(f"🏆 Meilleur algorithme: {comparison_results['best_algorithm'].upper()}")
+                        else:
+                            st.error("❌ Aucun algorithme n'a réussi l'optimisation")
+                            best_config = None
+                            cluster_analysis = {}
                     
-                    st.success(f"Optimisation terminée: {best_config['stats']['coverage_percent']:.1f}% de couverture avec {len(best_config['access_points'])} points d'accès")
+                    else:
+                        # Mode algorithme unique
+                        algorithm_name = algorithm_choice.upper()
+                        with st.spinner(f"Optimisation avec {algorithm_name}..."):
+                            best_config, cluster_analysis = optimizer.optimize_with_algorithm_choice_3d(
+                                algorithm_choice, coverage_points, grid_info, longueur, largeur, hauteur_totale,
+                                target_coverage_db, min_coverage_percent, max_access_points, power_tx
+                            )
+                        
+                        if best_config:
+                            st.success(f"Optimisation {algorithm_name} terminée: {best_config['stats']['coverage_percent']:.1f}% de couverture avec {len(best_config['access_points'])} points d'accès")
+                        else:
+                            st.error(f"❌ L'optimisation {algorithm_name} a échoué")
                     
                     # Affichage des résultats
                     if best_config:
@@ -857,6 +1210,14 @@ def optimization_3d_interface():
                             longueur, largeur, hauteur_totale
                         )
                         st.plotly_chart(fig_opt, use_container_width=True)
+
+                        html_buffer = fig_opt.to_html()
+                        st.download_button(
+                            label="📥 Télécharger Visualisation HTML",
+                            data=html_buffer,
+                            file_name=f"optimisation_3d_{frequency_opt}MHz.html",
+                            mime="text/html"
+                        )
                         
                         # Statistiques détaillées
                         col1, col2, col3 = st.columns(3)
@@ -900,311 +1261,89 @@ def optimization_3d_interface():
                             best_config, cluster_analysis or {}, {}
                         )
                         
-                        # Recommandations
-                        st.subheader("Recommandations")
-                        for i, rec in enumerate(report['recommendations'], 1):
-                            st.write(f"{i}. {rec}")
-                        
-                        # Analyse détaillée de la couverture
-                        if 'coverage_analysis' in report and report['coverage_analysis']:
-                            st.subheader("Analyse Détaillée de la Couverture")
+                        # Visualisations avancées spécifiques aux algorithmes
+                        if not compare_algorithms:
+                            if algorithm_choice == 'gmm' and 'gmm_metrics' in best_config:
+                                st.subheader("🧠 Analyse GMM Avancée")
+                                
+                                try:
+                                    # Visualisation du processus GMM
+                                    fig_gmm = optimizer.gmm_optimizer.visualize_gmm_process_3d(
+                                        best_config, cluster_analysis, coverage_points, 
+                                        longueur, largeur, hauteur_totale
+                                    )
+                                    
+                                    # Conversion matplotlib vers plotly ou affichage direct
+                                    st.pyplot(fig_gmm)
+                                    
+                                    # Métriques GMM
+                                    col1, col2, col3 = st.columns(3)
+                                    
+                                    with col1:
+                                        st.metric("AIC", f"{best_config['gmm_metrics']['aic']:.1f}")
+                                        st.metric("BIC", f"{best_config['gmm_metrics']['bic']:.1f}")
+                                    
+                                    with col2:
+                                        st.metric("Log-vraisemblance", f"{best_config['gmm_metrics']['log_likelihood']:.2f}")
+                                        st.metric("Convergé", "✅" if best_config['gmm_metrics']['converged'] else "❌")
+                                    
+                                    with col3:
+                                        st.metric("Itérations", best_config['gmm_metrics']['n_iter'])
+                                        st.metric("Composantes", best_config['n_components'])
+                                
+                                except Exception as e:
+                                    st.warning(f"Visualisation GMM indisponible: {e}")
                             
-                            coverage_data = [
-                                ["Excellent (≥-50dB)", report['coverage_analysis']['excellent_coverage']],
-                                ["Bon (-50 à -70dB)", report['coverage_analysis']['good_coverage']],
-                                ["Faible (-70 à -85dB)", report['coverage_analysis']['poor_coverage']],
-                                ["Pas de couverture (<-85dB)", report['coverage_analysis']['no_coverage']]
-                            ]
-                            
-                            df_coverage = pd.DataFrame(coverage_data, columns=["Qualité", "Nombre de Points"])
-                            st.dataframe(df_coverage, use_container_width=True)
-                            
-                            # Graphique en camembert
-                            fig_pie = go.Figure(data=[go.Pie(
-                                labels=[row[0] for row in coverage_data],
-                                values=[row[1] for row in coverage_data],
-                                hole=0.3,
-                                marker=dict(colors=['green', 'yellow', 'orange', 'red'])
-                            )])
-                            
-                            fig_pie.update_layout(
-                                title="Répartition de la Qualité de Couverture",
-                                width=600,
-                                height=400
-                            )
-                            
-                            st.plotly_chart(fig_pie, use_container_width=True)
-                        
-                        # Export des données
-                        st.subheader("Export des Résultats")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # Export CSV
-                            csv_data = optimizer.export_optimization_csv(best_config, report)
-                            st.download_button(
-                                label="📥 Télécharger Configuration CSV",
-                                data=csv_data,
-                                file_name=f"points_acces_optimises_{frequency_opt}MHz.csv",
-                                mime="text/csv"
-                            )
-                        
-                        with col2:
-                            # Export de la visualisation HTML
-                            html_buffer = fig_opt.to_html()
-                            st.download_button(
-                                label="📥 Télécharger Visualisation HTML",
-                                data=html_buffer,
-                                file_name=f"optimisation_3d_{frequency_opt}MHz.html",
-                                mime="text/html"
-                            )
+                            elif algorithm_choice == 'greedy' and 'placement_history' in cluster_analysis:
+                                st.subheader("🎯 Analyse Greedy Avancée")
+                                
+                                try:
+                                    # Visualisation du processus Greedy
+                                    fig_greedy = optimizer.greedy_optimizer.visualize_greedy_process_3d(
+                                        best_config, cluster_analysis, coverage_points,
+                                        longueur, largeur, hauteur_totale
+                                    )
+                                    
+                                    st.pyplot(fig_greedy)
+                                    
+                                    # Historique de placement
+                                    st.subheader("📈 Historique du Placement Séquentiel")
+                                    
+                                    history_data = []
+                                    for step in cluster_analysis['placement_history']:
+                                        history_data.append({
+                                            "Étape": step['ap_index'],
+                                            "Position": f"({step['position'][0]:.1f}, {step['position'][1]:.1f}, {step['position'][2]:.1f})",
+                                            "Couverture Avant (%)": f"{step['coverage_before']:.1f}",
+                                            "Couverture Après (%)": f"{step['coverage_after']:.1f}",
+                                            "Amélioration (%)": f"+{step['improvement']:.1f}"
+                                        })
+                                    
+                                    df_history = pd.DataFrame(history_data)
+                                    st.dataframe(df_history, use_container_width=True)
+                                    
+                                    # Métriques Greedy
+                                    col1, col2, col3 = st.columns(3)
+                                    
+                                    with col1:
+                                        total_improvement = sum(h['improvement'] for h in cluster_analysis['placement_history'])
+                                        st.metric("Amélioration Totale", f"+{total_improvement:.1f}%")
+                                    
+                                    with col2:
+                                        avg_improvement = total_improvement / len(cluster_analysis['placement_history'])
+                                        st.metric("Amélioration Moyenne", f"+{avg_improvement:.1f}%/AP")
+                                    
+                                    with col3:
+                                        st.metric("Étapes de Placement", len(cluster_analysis['placement_history']))
+                                
+                                except Exception as e:
+                                    st.warning(f"Visualisation Greedy indisponible: {e}") 
                 
                 except ImportError as e:
                     st.error(f"Module d'optimisation non disponible: {e}")
                     st.info("Vérifiez que tous les modules sont installés correctement.")
                 except Exception as e:
                     st.error(f"Erreur lors de l'optimisation: {e}")
-                    st.exception(e)
-        
-        except ImportError as e:
-            st.error(f"Module de traitement d'image non disponible: {e}")
-        except Exception as e:
-            st.error(f"Erreur lors du traitement: {e}")
-            st.exception(e)
-
-def optimization_2d_interface():
-    """Interface pour l'optimisation automatique des points d'accès 2D"""
-    st.header("Optimisation des Points d'Accès 2D")
-    
-    # Upload du fichier pour optimisation 2D
-    uploaded_file_optimization_2d = st.file_uploader(
-        "Téléchargez le plan de l'appartement (PNG) pour l'optimisation 2D",
-        type=['png'],
-        help="Le plan doit être en blanc avec les murs en noir",
-        key="upload_optimization_2d"
-    )
-    
-    if uploaded_file_optimization_2d is not None:
-        # Sidebar pour les paramètres d'optimisation 2D
-        st.sidebar.header("Paramètres d'Optimisation 2D")
-        # Conversion de l'image uploadée
-        image = Image.open(uploaded_file_optimization_2d)
-        image_array = np.array(image)
-        
-        # Affichage de l'image originale
-        st.subheader("Plan 2D pour optimisation")
-        st.image(image, caption="Plan pour optimisation des points d'accès 2D", use_column_width=True)
-        
-        # Paramètres du bâtiment 2D
-        st.sidebar.subheader("Dimensions du plan")
-        col1, col2 = st.sidebar.columns(2)
-        with col1:
-            longueur = st.number_input("Longueur (m)", min_value=1.0, value=10.0, step=0.1, key="longueur_opt_2d")
-            largeur = st.number_input("Largeur (m)", min_value=1.0, value=8.0, step=0.1, key="largeur_opt_2d")
-        
-        with col2:
-            nb_etages = st.number_input("Nombre d'étages", min_value=1, value=1, step=1, key="etages_opt_2d")
-            hauteur_etage = st.number_input("Hauteur étage (m)", min_value=2.0, value=2.7, step=0.1, key="hauteur_opt_2d")
-        
-        # Paramètres RF 2D
-        st.sidebar.subheader("Paramètres RF")
-        frequency_opt_2d = st.sidebar.selectbox("Fréquence", [2400, 5000], index=0, key="freq_opt_2d")
-        
-        # Objectifs de couverture 2D
-        st.sidebar.subheader("Objectifs de Couverture 2D")
-        target_coverage_db_2d = st.sidebar.number_input("Signal minimal (dB)", value=-70.0, step=1.0, key="target_signal_2d")
-        min_coverage_percent_2d = st.sidebar.number_input("Couverture minimale (%)", min_value=50.0, max_value=100.0, value=85.0, step=1.0, key="min_coverage_2d")
-        power_tx_2d = st.sidebar.number_input("Puissance émetteur (dBm)", value=20.0, step=1.0, key="power_opt_2d")
-        
-        # Paramètres d'optimisation 2D
-        st.sidebar.subheader("Paramètres d'Optimisation")
-        max_access_points_2d = st.sidebar.number_input("Nb max de points d'accès", min_value=1, max_value=8, value=6, step=1, key="max_ap_2d")
-        st.sidebar.info("🔧 Optimisation par clustering K-means uniquement")
-        
-        # Résolution pour le calcul 2D
-        st.sidebar.subheader("Résolution de Calcul")
-        resolution_2d = st.sidebar.slider("Résolution grille", min_value=15, max_value=40, value=25, key="res_2d")
-        
-        # Traitement de l'image
-        try:
-            from image_processor import ImageProcessor
-            processor = ImageProcessor()
-            processed_image, walls_detected = processor.process_image(image_array)
-            
-            # Affichage de l'image traitée
-            st.subheader("Murs détectés")
-            st.image(processed_image, caption="Murs extraits pour l'optimisation 2D", use_column_width=True)
-            
-            # Bouton d'optimisation 2D
-            if st.button("🚀 Lancer l'Optimisation 2D", key="optimize_button_2d"):
-                
-                try:
-                    from access_point_optimizer_2d_fixed import AccessPointOptimizer2D
-                    
-                    # Initialisation de l'optimiseur 2D
-                    optimizer_2d = AccessPointOptimizer2D(frequency_opt_2d)
-                    
-                    # Génération des points à couvrir 2D
-                    with st.spinner("Génération de la grille de couverture 2D..."):
-                        coverage_points, grid_info = optimizer_2d.generate_coverage_grid_2d(
-                            walls_detected, longueur, largeur, resolution_2d
-                        )
-                    
-                    st.success(f"Grille générée: {len(coverage_points)} points à couvrir en 2D")
-                    
-                    # Optimisation par clustering K-means 2D
-                    with st.spinner("Optimisation par clustering K-means 2D..."):
-                        best_config_2d, cluster_analysis_2d = optimizer_2d.optimize_with_clustering_2d(
-                            coverage_points, grid_info, longueur, largeur,
-                            target_coverage_db_2d, min_coverage_percent_2d, power_tx_2d, max_access_points_2d
-                        )
-                    
-                    st.success(f"Optimisation terminée: {best_config_2d['stats']['coverage_percent']:.1f}% de couverture avec {len(best_config_2d['access_points'])} points d'accès")
-                    
-                    # Affichage des résultats 2D
-                    if best_config_2d:
-                        # Visualisation 2D
-                        st.subheader("Résultat de l'Optimisation 2D")
-                        fig_opt_2d = optimizer_2d.visualize_optimization_result_2d(
-                            best_config_2d, coverage_points, grid_info, 
-                            longueur, largeur, image_array
-                        )
-                        st.pyplot(fig_opt_2d)
-                        
-                        # Statistiques détaillées 2D
-                        col1, col2, col3 = st.columns(3)
-                        
-                        with col1:
-                            st.metric("Points d'Accès 2D", len(best_config_2d['access_points']))
-                            st.metric("Couverture 2D", f"{best_config_2d['stats']['coverage_percent']:.1f}%")
-                        
-                        with col2:
-                            st.metric("Points Couverts", f"{best_config_2d['stats']['covered_points']}/{best_config_2d['stats']['total_points']}")
-                            st.metric("Score d'Optimisation", f"{best_config_2d['score']:.3f}")
-                        
-                        with col3:
-                            if 'signal_levels' in best_config_2d['stats']:
-                                avg_signal = np.mean(best_config_2d['stats']['signal_levels'])
-                                st.metric("Signal Moyen", f"{avg_signal:.1f} dB")
-                                min_signal = np.min(best_config_2d['stats']['signal_levels'])
-                                st.metric("Signal Minimal", f"{min_signal:.1f} dB")
-                        
-                        # Configuration des points d'accès 2D
-                        st.subheader("Configuration des Points d'Accès Optimisés 2D")
-                        
-                        ap_data_2d = []
-                        for i, ap in enumerate(best_config_2d['access_points']):
-                            x, y, power = ap
-                            ap_data_2d.append({
-                                "Point d'Accès": f"AP{i+1}",
-                                "Position X (m)": round(x, 2),
-                                "Position Y (m)": round(y, 2),
-                                "Puissance (dBm)": round(power, 1)
-                            })
-                        
-                        df_ap_2d = pd.DataFrame(ap_data_2d)
-                        st.dataframe(df_ap_2d, use_container_width=True)
-                        
-                        # Génération du rapport 2D
-                        report_2d = optimizer_2d.generate_optimization_report_2d(
-                            best_config_2d, cluster_analysis_2d or {}, {}
-                        )
-                        
-                        # Recommandations 2D
-                        st.subheader("Recommandations 2D")
-                        for i, rec in enumerate(report_2d['recommendations'], 1):
-                            st.write(f"{i}. {rec}")
-                        
-                        # Analyse détaillée de la couverture 2D
-                        if 'coverage_analysis' in report_2d and report_2d['coverage_analysis']:
-                            st.subheader("Analyse Détaillée de la Couverture 2D")
-                            
-                            coverage_data_2d = [
-                                ["Excellent (≥-50dB)", report_2d['coverage_analysis']['excellent_coverage']],
-                                ["Bon (-50 à -70dB)", report_2d['coverage_analysis']['good_coverage']],
-                                ["Faible (-70 à -85dB)", report_2d['coverage_analysis']['poor_coverage']],
-                                ["Pas de couverture (<-85dB)", report_2d['coverage_analysis']['no_coverage']]
-                            ]
-                            
-                            df_coverage_2d = pd.DataFrame(coverage_data_2d, columns=["Qualité", "Nombre de Points"])
-                            st.dataframe(df_coverage_2d, use_container_width=True)
-                            
-                            # Graphique en camembert pour 2D
-                            fig_pie_2d = go.Figure(data=[go.Pie(
-                                labels=[row[0] for row in coverage_data_2d],
-                                values=[row[1] for row in coverage_data_2d],
-                                hole=0.3,
-                                marker=dict(colors=['green', 'yellow', 'orange', 'red'])
-                            )])
-                            
-                            fig_pie_2d.update_layout(
-                                title="Répartition de la Qualité de Couverture 2D",
-                                width=600,
-                                height=400
-                            )
-                            
-                            st.plotly_chart(fig_pie_2d, use_container_width=True)
-                        
-                        # Export des données 2D
-                        st.subheader("Export des Résultats 2D")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # Export CSV 2D
-                            csv_data_2d = optimizer_2d.export_optimization_csv_2d(best_config_2d, report_2d)
-                            st.download_button(
-                                label="📥 Télécharger Configuration CSV 2D",
-                                data=csv_data_2d,
-                                file_name=f"points_acces_optimises_2d_{frequency_opt_2d}MHz.csv",
-                                mime="text/csv"
-                            )
-                        
-                        with col2:
-                            # Export de la visualisation
-                            import io
-                            import base64
-                            buffer = io.BytesIO()
-                            fig_opt_2d.savefig(buffer, format='png', dpi=300, bbox_inches='tight')
-                            buffer.seek(0)
-                            
-                            st.download_button(
-                                label="📥 Télécharger Visualisation PNG",
-                                data=buffer.getvalue(),
-                                file_name=f"optimisation_2d_{frequency_opt_2d}MHz.png",
-                                mime="image/png"
-                            )
-                        
-                        # Comparaison avec les méthodes traditionnelles
-                        st.subheader("Avantages de l'Optimisation Automatique")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown("""
-                            **✅ Placement Manuel Traditional:**
-                            - Placement au centre des pièces
-                            - Répartition uniforme
-                            - Pas d'optimisation globale
-                            - Souvent sur-dimensionné
-                            """)
-                        
-                        with col2:
-                            st.markdown(f"""
-                            **🚀 Optimisation Automatique:**
-                            - Placement optimal calculé
-                            - Prise en compte des obstacles
-                            - Nombre minimal de points d'accès: **{len(best_config_2d['access_points'])}**
-                            - Couverture optimisée: **{best_config_2d['stats']['coverage_percent']:.1f}%**
-                            - Score d'efficacité: **{best_config_2d['score']:.3f}**
-                            """)
-                
-                except ImportError as e:
-                    st.error(f"Module d'optimisation 2D non disponible: {e}")
-                    st.info("Vérifiez que tous les modules sont installés correctement.")
-                except Exception as e:
-                    st.error(f"Erreur lors de l'optimisation 2D: {e}")
                     st.exception(e)
         
         except ImportError as e:
